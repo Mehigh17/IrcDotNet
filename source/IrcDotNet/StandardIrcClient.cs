@@ -20,7 +20,7 @@ namespace IrcDotNet
         // Minimum duration of time to wait between sending successive raw messages.
         private const long minimumSendWaitTime = 50;
 
-        // Size of buffer for data received by socket, in bytes.
+        // Size of buffer for data received by _socket, in bytes.
         private const int socketReceiveBufferSize = 0xFFFF;
         private Stream dataStream;
         private SafeLineReader dataStreamLineReader;
@@ -37,7 +37,7 @@ namespace IrcDotNet
 
         public StandardIrcClient()
         {
-            socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            ReinitializeSocket();
             sendTimer = new Timer(WritePendingMessages, null,
                 Timeout.Infinite, Timeout.Infinite);
             disconnectedEvent = new AutoResetEvent(false);
@@ -52,6 +52,12 @@ namespace IrcDotNet
                 CheckDisposed();
                 return socket != null && socket.Connected;
             }
+        }
+
+        private void ReinitializeSocket()
+        {
+            socket?.Dispose();
+            socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         }
 
         protected override void Dispose(bool disposing)
@@ -204,7 +210,7 @@ namespace IrcDotNet
         public virtual void Connect(EndPoint remoteEndPoint, bool useSsl, IrcRegistrationInfo registrationInfo)
         {
             Connect(registrationInfo);
-            // Connect socket to remote host.
+            // Connect _socket to remote host.
             ConnectAsync(remoteEndPoint, Tuple.Create(useSsl, string.Empty, registrationInfo));
 
             HandleClientConnecting();
@@ -296,7 +302,7 @@ namespace IrcDotNet
 
         private void SendAsync(byte[] buffer, int offset, int count, object token = null)
         {
-            // Write data from buffer to socket asynchronously.
+            // Write data from buffer to _socket asynchronously.
             var sendEventArgs = new SocketAsyncEventArgs();
             sendEventArgs.SetBuffer(buffer, offset, count);
             sendEventArgs.UserToken = token;
@@ -318,7 +324,7 @@ namespace IrcDotNet
 
                 // Handle sent IRC message.
                 Debug.Assert(e.UserToken != null);
-                var messageSentEventArgs = (IrcRawMessageEventArgs) e.UserToken;
+                var messageSentEventArgs = (IrcRawMessageEventArgs)e.UserToken;
                 OnRawMessageSent(messageSentEventArgs);
 
 #if DEBUG
@@ -343,11 +349,11 @@ namespace IrcDotNet
 
         private void ReceiveAsync()
         {
-            // Read data received from socket to buffer asynchronously.
+            // Read data received from _socket to buffer asynchronously.
             var receiveEventArgs = new SocketAsyncEventArgs();
-            Debug.Assert(receiveStream.Buffer.Length - (int) receiveStream.WritePosition > 0);
-            receiveEventArgs.SetBuffer(receiveStream.Buffer, (int) receiveStream.WritePosition,
-                receiveStream.Buffer.Length - (int) receiveStream.WritePosition);
+            Debug.Assert(receiveStream.Buffer.Length - (int)receiveStream.WritePosition > 0);
+            receiveEventArgs.SetBuffer(receiveStream.Buffer, (int)receiveStream.WritePosition,
+                receiveStream.Buffer.Length - (int)receiveStream.WritePosition);
             receiveEventArgs.Completed += ReceiveCompleted;
 
             if (!socket.ReceiveAsync(receiveEventArgs))
@@ -388,7 +394,7 @@ namespace IrcDotNet
                     ParseMessage(line);
                 }
 
-                // Continue reading data from socket.
+                // Continue reading data from _socket.
                 ReceiveAsync();
             }
             catch (SocketException exSocket)
@@ -413,7 +419,7 @@ namespace IrcDotNet
 
         private void ConnectAsync(EndPoint remoteEndPoint, object token = null)
         {
-            // Connect socket to remote endpoint asynchronously.
+            // Connect _socket to remote endpoint asynchronously.
             var connectEventArgs = new SocketAsyncEventArgs();
             connectEventArgs.RemoteEndPoint = remoteEndPoint;
             connectEventArgs.UserToken = token;
@@ -434,7 +440,7 @@ namespace IrcDotNet
                 }
 
                 Debug.Assert(e.UserToken != null);
-                var token = (Tuple<bool, string, IrcRegistrationInfo>) e.UserToken;
+                var token = (Tuple<bool, string, IrcRegistrationInfo>)e.UserToken;
 
                 // Create stream for received data. Use SSL stream on top of network stream, if specified.
                 receiveStream = new CircularBufferStream(socketReceiveBufferSize);
@@ -474,7 +480,7 @@ namespace IrcDotNet
 
         private void DisconnectAsync()
         {
-            // Connect socket to remote endpoint asynchronously.
+            // Connect _socket to remote endpoint asynchronously.
             var disconnectEventArgs = new SocketAsyncEventArgs();
             disconnectEventArgs.Completed += DisconnectCompleted;
 
@@ -484,8 +490,8 @@ namespace IrcDotNet
             DisconnectCompleted(socket, disconnectEventArgs);
 #else
             disconnectEventArgs.DisconnectReuseSocket = true;
-            if (!socket.DisconnectAsync(disconnectEventArgs))
-                DisconnectCompleted(socket, disconnectEventArgs);
+            if (!_socket.DisconnectAsync(disconnectEventArgs))
+                DisconnectCompleted(_socket, disconnectEventArgs);
 #endif
         }
 
@@ -519,12 +525,14 @@ namespace IrcDotNet
             {
                 e.Dispose();
             }
+
+            ReinitializeSocket();
         }
 
         protected override void HandleClientConnected(IrcRegistrationInfo regInfo)
         {
             DebugUtilities.WriteEvent(string.Format("Connected to server at '{0}'.",
-                ((IPEndPoint) socket.RemoteEndPoint).Address));
+                ((IPEndPoint)socket.RemoteEndPoint).Address));
 
             base.HandleClientConnected(regInfo);
         }
@@ -548,7 +556,7 @@ namespace IrcDotNet
 
         private void HandleSocketError(SocketError error)
         {
-            HandleSocketError(new SocketException((int) error));
+            HandleSocketError(new SocketException((int)error));
         }
 
         private void HandleSocketError(SocketException exception)
@@ -611,5 +619,5 @@ namespace IrcDotNet
         }
 
 #endif
-            }
+    }
 }
